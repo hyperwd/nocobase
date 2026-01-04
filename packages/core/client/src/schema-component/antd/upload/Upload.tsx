@@ -33,6 +33,7 @@ import LightBox from 'react-image-lightbox';
 import 'react-image-lightbox/style.css'; // This only needs to be imported once in your app
 import { useFlag } from '../../../flag-provider';
 import { withDynamicSchemaProps } from '../../../hoc/withDynamicSchemaProps';
+import { useAPIClient } from '../../../api-client';
 import { useComponent } from '../../hooks';
 import { useProps } from '../../hooks/useProps';
 import {
@@ -74,8 +75,24 @@ attachmentFileTypes.add({
   Previewer({ index, list, onSwitchIndex }) {
     const [angle, setAngle] = useState(0);
     const isPatchingRef = useRef(false);
+    const apiClient = useAPIClient();
 
     const getImageEl = () => document.querySelector('.ril-image-current') as HTMLElement | null;
+
+    // 为 URL 添加 token 的辅助函数
+    const getUrlWithToken = useCallback(
+      (url) => {
+        if (url && (url.includes('/api/attachments:download') || url.includes('/api/attachments:downloadWithToken'))) {
+          const token = apiClient.auth.getToken();
+          if (token) {
+            const separator = url.includes('?') ? '&' : '?';
+            return `${url}${separator}token=${token}`;
+          }
+        }
+        return url;
+      },
+      [apiClient],
+    );
 
     const applyRotation = useCallback((el: HTMLElement | null, a: number) => {
       if (!el) return;
@@ -96,9 +113,10 @@ attachmentFileTypes.add({
       (e) => {
         e.preventDefault();
         const file = list[index];
-        saveAs(file.url, `${file.title}${file.extname}`);
+        const urlWithToken = getUrlWithToken(file.url);
+        saveAs(urlWithToken, `${file.title}${file.extname}`);
       },
-      [index, list],
+      [index, list, getUrlWithToken],
     );
     const onRotateLeft = useCallback(() => {
       setAngle((prev) => (prev - 90) % 360);
@@ -127,14 +145,25 @@ attachmentFileTypes.add({
       return () => observer.disconnect();
     }, [applyRotation, angle, index]);
 
+    // 为图片 URL 添加 token
+    const currentFileUrl = useMemo(() => getUrlWithToken(list[index]?.url), [index, list, getUrlWithToken]);
+    const nextFileUrl = useMemo(
+      () => getUrlWithToken(list[(index + 1) % list.length]?.url),
+      [index, list, getUrlWithToken],
+    );
+    const prevFileUrl = useMemo(
+      () => getUrlWithToken(list[(index + list.length - 1) % list.length]?.url),
+      [index, list, getUrlWithToken],
+    );
+
     return (
       <>
         <LightBoxGlobalStyle />
         <LightBox
           // discourageDownloads={true}
-          mainSrc={list[index]?.url}
-          nextSrc={list[(index + 1) % list.length]?.url}
-          prevSrc={list[(index + list.length - 1) % list.length]?.url}
+          mainSrc={currentFileUrl}
+          nextSrc={nextFileUrl}
+          prevSrc={prevFileUrl}
           onCloseRequest={() => onSwitchIndex(null)}
           onMovePrevRequest={() => {
             setAngle(0);
@@ -189,23 +218,39 @@ const iframePreviewSupportedTypes = ['application/pdf', 'audio/*', 'image/*', 'v
 
 function IframePreviewer({ index, list, onSwitchIndex }) {
   const { t } = useTranslation();
+  const apiClient = useAPIClient();
   const file = list[index];
   const url = file.url;
+
+  // 在 URL 中添加 token,以支持 iframe 预览时的认证
+  const urlWithToken = useMemo(() => {
+    // 检查 URL 是否是 NocoBase API 路径(需要认证)
+    if (url && (url.includes('/api/attachments:download') || url.includes('/api/attachments:downloadWithToken'))) {
+      const token = apiClient.auth.getToken();
+      if (token) {
+        // 如果 URL 已经有 token 参数,则替换;否则添加
+        const separator = url.includes('?') ? '&' : '?';
+        return `${url}${separator}token=${token}`;
+      }
+    }
+    return url;
+  }, [url, apiClient]);
+
   const onOpen = useCallback(
     (e) => {
       e.preventDefault();
       e.stopPropagation();
-      window.open(url);
+      window.open(urlWithToken);
     },
-    [url],
+    [urlWithToken],
   );
   const onDownload = useCallback(
     (e) => {
       e.preventDefault();
       e.stopPropagation();
-      saveAs(url, `${file.title}${file.extname}`);
+      saveAs(urlWithToken, `${file.title}${file.extname}`);
     },
-    [file.extname, file.title, url],
+    [file.extname, file.title, urlWithToken],
   );
   const onClose = useCallback(() => {
     onSwitchIndex(null);
@@ -245,7 +290,7 @@ function IframePreviewer({ index, list, onSwitchIndex }) {
       >
         {iframePreviewSupportedTypes.some((type) => matchMimetype(file, type)) ? (
           <iframe
-            src={url}
+            src={urlWithToken}
             style={{
               width: '100%',
               maxHeight: '90vh',
@@ -335,9 +380,26 @@ function useSizeHint(size: number) {
 
 function DefaultThumbnailPreviewer({ file }) {
   const { componentCls: prefixCls } = useStyles();
+  const apiClient = useAPIClient();
   const { getThumbnailURL = getThumbnailPlaceholderURL } = attachmentFileTypes.getTypeByFile(file) ?? {};
   const imageUrl = getThumbnailURL(file);
-  return <img src={imageUrl} alt={file.title} className={`${prefixCls}-list-item-image`} />;
+
+  // 为缩略图 URL 添加 token
+  const imageUrlWithToken = useMemo(() => {
+    if (
+      imageUrl &&
+      (imageUrl.includes('/api/attachments:download') || imageUrl.includes('/api/attachments:downloadWithToken'))
+    ) {
+      const token = apiClient.auth.getToken();
+      if (token) {
+        const separator = imageUrl.includes('?') ? '&' : '?';
+        return `${imageUrl}${separator}token=${token}`;
+      }
+    }
+    return imageUrl;
+  }, [imageUrl, apiClient]);
+
+  return <img src={imageUrlWithToken} alt={file.title} className={`${prefixCls}-list-item-image`} />;
 }
 
 function AttachmentListItem(props) {

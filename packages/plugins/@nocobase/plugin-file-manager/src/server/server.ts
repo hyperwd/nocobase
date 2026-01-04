@@ -15,7 +15,13 @@ import { Collection, Model, Transactionable } from '@nocobase/database';
 import { Plugin } from '@nocobase/server';
 import { Registry } from '@nocobase/utils';
 import { Readable } from 'stream';
-import { STORAGE_TYPE_ALI_OSS, STORAGE_TYPE_LOCAL, STORAGE_TYPE_S3, STORAGE_TYPE_TX_COS } from '../constants';
+import {
+  STORAGE_TYPE_ALI_OSS,
+  STORAGE_TYPE_LOCAL,
+  STORAGE_TYPE_S3,
+  STORAGE_TYPE_TX_COS,
+  STORAGE_TYPE_WEBDAV,
+} from '../constants';
 import initActions from './actions';
 import { AttachmentInterface } from './interfaces/attachment-interface';
 import { AttachmentModel, StorageClassType, StorageModel } from './storages';
@@ -23,6 +29,7 @@ import StorageTypeAliOss from './storages/ali-oss';
 import StorageTypeLocal from './storages/local';
 import StorageTypeS3 from './storages/s3';
 import StorageTypeTxCos from './storages/tx-cos';
+import StorageTypeWebdav from './storages/webdav';
 import { encodeURL } from './utils';
 
 export type * from './storages';
@@ -225,6 +232,7 @@ export class PluginFileManagerServer extends Plugin {
     this.storageTypes.register(STORAGE_TYPE_ALI_OSS, StorageTypeAliOss);
     this.storageTypes.register(STORAGE_TYPE_S3, StorageTypeS3);
     this.storageTypes.register(STORAGE_TYPE_TX_COS, StorageTypeTxCos);
+    this.storageTypes.register(STORAGE_TYPE_WEBDAV, StorageTypeWebdav);
 
     const Storage = this.db.getModel('storages');
     Storage.afterSave(async (m, { transaction }) => {
@@ -264,7 +272,10 @@ export class PluginFileManagerServer extends Plugin {
 
     initActions(this);
 
-    this.app.acl.allow('attachments', ['upload', 'create'], 'loggedIn');
+    this.app.acl.allow('attachments', ['upload', 'create', 'download'], 'loggedIn');
+    // downloadWithToken 允许公开访问，用于 iframe 预览等场景
+    // 文件 ID 本身起到了访问控制的作用
+    this.app.acl.allow('attachments', 'downloadWithToken', 'public');
     this.app.acl.allow('storages', 'getBasicInfo', 'loggedIn');
 
     this.app.acl.appendStrategyResource('attachments');
@@ -346,7 +357,7 @@ export class PluginFileManagerServer extends Plugin {
       });
     }
     storage = this.parseStorage(storage);
-    if (['local', 'ali-oss', 's3', 'tx-cos'].includes(storage.type)) {
+    if (['local', 'ali-oss', 's3', 'tx-cos', 'webdav'].includes(storage.type)) {
       return true;
     }
     return !!storage.options?.public;

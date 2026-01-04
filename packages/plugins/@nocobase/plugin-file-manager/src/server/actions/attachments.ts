@@ -221,3 +221,111 @@ export async function createMiddleware(ctx: Context, next: Next) {
     await next();
   }
 }
+
+export async function download(ctx: Context, next: Next) {
+  const { filterByTk } = ctx.action.params;
+  const plugin = ctx.app.pm.get(Plugin) as Plugin;
+
+  if (!filterByTk) {
+    return ctx.throw(400, 'File ID is required');
+  }
+
+  // 从数据库获取文件记录
+  const file = await ctx.db.getRepository('attachments').findOne({
+    filter: { id: filterByTk },
+  });
+
+  if (!file) {
+    return ctx.throw(404, 'File not found');
+  }
+
+  try {
+    console.log('[Attachment Download] Starting download for file:', {
+      id: file.id,
+      filename: file.filename,
+      storageId: file.storageId,
+    });
+
+    // 获取文件流
+    const { stream, contentType } = await plugin.getFileStream(file);
+
+    console.log('[Attachment Download] File stream obtained:', {
+      contentType,
+      filename: file.filename,
+    });
+
+    ctx.set('Content-Type', contentType || 'application/octet-stream');
+    ctx.set('Content-Disposition', `inline; filename="${encodeURIComponent(file.filename || 'download')}"`);
+
+    // 添加 CORS 头,支持 iframe 预览
+    ctx.set('Access-Control-Allow-Origin', '*');
+    ctx.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    ctx.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    ctx.set('Access-Control-Allow-Credentials', 'true');
+
+    ctx.body = stream;
+
+    // 不调用 next(),因为我们已经设置了响应体
+  } catch (error) {
+    console.error('[Attachment Download] Error:', {
+      error: error.message,
+      stack: error.stack,
+      fileId: filterByTk,
+    });
+    return ctx.throw(500, `Failed to download file: ${error.message}`);
+  }
+}
+
+// 创建一个新的下载 action,支持通过 URL 参数传递 token
+export async function downloadWithToken(ctx: Context, next: Next) {
+  const { filterByTk } = ctx.action.params;
+  const plugin = ctx.app.pm.get(Plugin) as Plugin;
+
+  if (!filterByTk) {
+    return ctx.throw(400, 'File ID is required');
+  }
+
+  // 从数据库获取文件记录
+  const file = await ctx.db.getRepository('attachments').findOne({
+    filter: { id: filterByTk },
+  });
+
+  if (!file) {
+    return ctx.throw(404, 'File not found');
+  }
+
+  try {
+    console.log('[Attachment Download With Token] Starting download for file:', {
+      id: file.id,
+      filename: file.filename,
+      storageId: file.storageId,
+      hasToken: !!ctx.query.token,
+    });
+
+    // 获取文件流
+    const { stream, contentType } = await plugin.getFileStream(file);
+
+    console.log('[Attachment Download With Token] File stream obtained:', {
+      contentType,
+      filename: file.filename,
+    });
+
+    ctx.set('Content-Type', contentType || 'application/octet-stream');
+    ctx.set('Content-Disposition', `inline; filename="${encodeURIComponent(file.filename || 'download')}"`);
+
+    // 添加 CORS 头,支持 iframe 预览
+    ctx.set('Access-Control-Allow-Origin', '*');
+    ctx.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    ctx.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    ctx.set('Access-Control-Allow-Credentials', 'true');
+
+    ctx.body = stream;
+  } catch (error) {
+    console.error('[Attachment Download With Token] Error:', {
+      error: error.message,
+      stack: error.stack,
+      fileId: filterByTk,
+    });
+    return ctx.throw(500, `Failed to download file: ${error.message}`);
+  }
+}

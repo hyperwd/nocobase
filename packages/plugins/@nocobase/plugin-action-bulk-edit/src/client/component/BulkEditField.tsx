@@ -142,7 +142,13 @@ export const BulkEditField = (props: any) => {
       </Select>
       {[BulkEditFormItemValueType.ChangedTo, BulkEditFormItemValueType.AddAttach].includes(type) &&
         collectionField?.interface !== 'checkbox' && (
-          <CollectionField {...props} value={value} onChange={valueChangeHandler} style={{ minWidth: 150 }} />
+          <CollectionField
+            {...props}
+            value={value}
+            onChange={valueChangeHandler}
+            action={`${collectionField?.target}:create`}
+            style={{ minWidth: 150 }}
+          />
         )}
       {[BulkEditFormItemValueType.ChangedTo, BulkEditFormItemValueType.AddAttach].includes(type) &&
         collectionField?.interface === 'checkbox' && <Checkbox checked={value} onChange={valueChangeHandler} />}

@@ -5,15 +5,21 @@ storage/app-dev
 **/.umi
 **/.umi-production
 
+# Ignore node_modules everywhere
+node_modules
+**/node_modules
+
 # Ignore certain directories under packages
 packages/*/*/lib
 packages/*/*/esm
 packages/*/*/es
 packages/*/*/dist
-packages/*/*/node_modules
 
 /.vscode
 /.idea
+.git
 
 *.sqlite
 /uploads
+yarn-error.log
+*.log

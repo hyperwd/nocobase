@@ -28,6 +28,7 @@ export interface StorageModel {
 }
 
 export interface AttachmentModel {
+  id?: number | string;
   title: string;
   filename: string;
   mimetype?: string;

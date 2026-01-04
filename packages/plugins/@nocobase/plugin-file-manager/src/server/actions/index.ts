@@ -8,7 +8,7 @@
  */
 
 import actions from '@nocobase/actions';
-import { createMiddleware } from './attachments';
+import { createMiddleware, download, downloadWithToken } from './attachments';
 import * as storageActions from './storages';
 
 export default function ({ app }) {
@@ -16,6 +16,12 @@ export default function ({ app }) {
     name: 'storages',
     actions: storageActions,
   });
+
+  // 注册附件下载 action
+  app.resourceManager.registerActionHandler('attachments:download', download);
+  // 注册带 token 的附件下载 action,用于 iframe 预览等场景
+  app.resourceManager.registerActionHandler('attachments:downloadWithToken', downloadWithToken);
+
   app.resourcer.use(createMiddleware, { tag: 'createMiddleware', after: 'auth' });
   app.resourcer.registerActionHandler('upload', actions.create);
   app.resourcer.use(

@@ -25,6 +25,68 @@ import { App, message } from 'antd';
 import { useContext, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+/**
+ * 批量编辑表单值类型枚举
+ * 对应 BulkEditFormItemValueType
+ */
+enum BulkEditValueType {
+  RemainsTheSame = 1,
+  ChangedTo = 2,
+  Clear = 3,
+  AddAttach = 4,
+}
+
+/**
+ * 解析批量编辑的表单值
+ * 将批量编辑的特殊数据结构 { 1: value, 2: null, 3: undefined } 转换为实际的值
+ *
+ * @param formValues - 表单值对象
+ * @returns 解析后的值对象（只包含需要更新的字段）
+ */
+function parseBulkEditValues(formValues: Record<string, any>): Record<string, any> {
+  const parsedValues: Record<string, any> = {};
+
+  for (const key in formValues) {
+    const value = formValues[key];
+
+    // 跳过 undefined 和 null
+    if (value === undefined || value === null) {
+      continue;
+    }
+
+    // 检查是否是批量编辑的数据结构（对象但不是数组）
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      if (BulkEditValueType.ChangedTo in value) {
+        // 更改为：提取实际值
+        const actualValue = value[BulkEditValueType.ChangedTo];
+        if (actualValue !== undefined) {
+          parsedValues[key] = actualValue;
+        }
+      } else if (BulkEditValueType.Clear in value) {
+        // 清空：设置为 null
+        parsedValues[key] = null;
+      } else if (BulkEditValueType.AddAttach in value) {
+        // 添加附件：提取实际值
+        const actualValue = value[BulkEditValueType.AddAttach];
+        if (actualValue !== undefined) {
+          parsedValues[key] = actualValue;
+        }
+      } else if (BulkEditValueType.RemainsTheSame in value) {
+        // 保持不变：不包含在结果中
+        continue;
+      } else {
+        // 普通对象，保持原样
+        parsedValues[key] = value;
+      }
+    } else {
+      // 普通值或数组（如附件字段），保持原样
+      parsedValues[key] = value;
+    }
+  }
+
+  return parsedValues;
+}
+
 export const useCustomBulkEditFormItemInitializerFields = (options?: any) => {
   const { name, fields } = useCollection_deprecated();
   const { getInterface, getCollection } = useCollectionManager_deprecated();
@@ -111,6 +173,8 @@ export const useCustomizeBulkEditActionProps = () => {
       actionField.data = field.data || {};
       actionField.data.loading = true;
       try {
+        const parsedValues = parseBulkEditValues(form.values);
+
         const updateData: {
           filter?: any;
           filterByTk?: any[];
@@ -118,12 +182,13 @@ export const useCustomizeBulkEditActionProps = () => {
           forceUpdate: boolean;
           triggerWorkflows?: string;
         } = {
-          values: form.values,
+          values: parsedValues,
           forceUpdate: false,
           triggerWorkflows: triggerWorkflows?.length
             ? triggerWorkflows.map((row) => [row.workflowKey, row.context].filter(Boolean).join('!')).join(',')
             : undefined,
         };
+
         if (updateMode === 'selected') {
           if (!selectedRecordKeys?.length) {
             message.error(t('Please select the records to be updated'));
@@ -133,9 +198,11 @@ export const useCustomizeBulkEditActionProps = () => {
         } else {
           updateData.filter = filter;
         }
+
         if (!updateData.filter && !updateData.filterByTk) {
           updateData.forceUpdate = true;
         }
+
         await resource.update(updateData);
         actionField.data.loading = false;
 
